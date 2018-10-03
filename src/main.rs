@@ -1,14 +1,31 @@
+use actix::dev::{MessageResponse, ResponseChannel};
 use actix::*;
 use futures::Future;
-use std::io;
 
-// Define message
-struct Ping {
-    pub id: usize,
+enum Requests {
+    Ping,
+    Pong,
 }
 
-impl Message for Ping {
-    type Result = Result<bool, io::Error>;
+enum Responses {
+    GotPing,
+    GotPong,
+}
+
+impl<A, M> MessageResponse<A, M> for Responses
+where
+    A: Actor,
+    M: Message<Result = Responses>,
+{
+    fn handle<R: ResponseChannel<M>>(self, _: &mut A::Context, tx: Option<R>) {
+        if let Some(tx) = tx {
+            tx.send(self);
+        }
+    }
+}
+
+impl Message for Requests {
+    type Result = Responses;
 }
 
 // Define actor
@@ -27,15 +44,15 @@ impl Actor for MyActor {
     }
 }
 
-/// Define handler for `Ping` message
-impl Handler<Ping> for MyActor {
-    type Result = Result<bool, io::Error>;
+/// Define handler for `Messages` enum
+impl Handler<Requests> for MyActor {
+    type Result = Responses;
 
-    fn handle(&mut self, msg: Ping, _ctx: &mut Context<Self>) -> Self::Result {
-        println!("Ping received: {:?}", msg.id);
-        System::current().stop();
-
-        Ok(true)
+    fn handle(&mut self, msg: Requests, _ctx: &mut Context<Self>) -> Self::Result {
+        match msg {
+            Requests::Ping => Responses::GotPing,
+            Requests::Pong => Responses::GotPong,
+        }
     }
 }
 
@@ -47,14 +64,27 @@ fn main() {
 
     // Send Ping message.
     // send() message returns Future object, that resolves to message result
-    let result = addr.send(Ping { id: 10 });
+    let ping_future = addr.send(Requests::Ping);
+    let pong_future = addr.send(Requests::Pong);
 
-    // spawn future to reactor
+    // Spawn ping_future onto event loop
     Arbiter::spawn(
-        result
+        ping_future
             .map(|res| match res {
-                Ok(result) => println!("Got result: {}", result),
-                Err(err) => println!("Got error: {}", err),
+                Responses::GotPing => println!("1: Ping received"),
+                Responses::GotPong => println!("1: Pong received"),
+            })
+            .map_err(|e| {
+                println!("Actor is probably died: {}", e);
+            }),
+    );
+
+    // Spawn pong_future onto event loop
+    Arbiter::spawn(
+        pong_future
+            .map(|res| match res {
+                Responses::GotPing => println!("2: Ping received"),
+                Responses::GotPong => println!("2: Pong received"),
             })
             .map_err(|e| {
                 println!("Actor is probably died: {}", e);
@@ -62,4 +92,5 @@ fn main() {
     );
 
     sys.run();
+
 }
