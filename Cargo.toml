@@ -6,3 +6,4 @@ edition = "2018"
 
 [dependencies]
 actix = "0.7"
+futures = "0.1"

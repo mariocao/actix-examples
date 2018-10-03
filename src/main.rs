@@ -1,20 +1,45 @@
-use actix::{Actor, Context, System};
+use actix::{Actor, Arbiter, Context, Handler, Message, System};
+use futures::{future, Future};
 
-struct MyActor;
+// this is our Message
+struct SumRequest(usize, usize);
 
-impl Actor for MyActor {
+// we have to define the response type for `Sum` message
+impl Message for SumRequest {
+    type Result = usize;
+}
+
+// Actor definition
+struct Summator;
+
+impl Actor for Summator {
     type Context = Context<Self>;
+}
 
-    fn started(&mut self, _: &mut Self::Context) {
-       println!("I am alive!");
-       System::current().stop(); // <- stop system
+// now we need to define `MessageHandler` for the `Sum` message.
+impl Handler<SumRequest> for Summator {
+    type Result = usize;   // <- Message response type
+
+    fn handle(&mut self, msg: SumRequest, _ctx: &mut Context<Self>) -> Self::Result {
+        msg.0 + msg.1
     }
 }
 
 fn main() {
-    let system = System::new("test");
+    let sys = System::new("test");
 
-    let _ = MyActor.start();
+    let addr = Summator.start();
+    let res = addr.send(SumRequest(10, 5));  // <- send message and get future for result
+    
+    Arbiter::spawn(res.then(|res| {
+        match res {
+            Ok(result) => println!("SUM: {}", result),
+            _ => println!("Something wrong"),
+        }
+        
+        System::current().stop();
+        future::result(Ok(()))
+    }));
 
-    system.run();
+    sys.run();
 }
