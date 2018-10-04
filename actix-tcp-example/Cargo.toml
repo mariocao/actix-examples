@@ -1,0 +1,9 @@
+[package]
+name = "actix-tcp-example"
+version = "0.1.0"
+authors = ["Mario Cao <mario@stampery.co>"]
+edition = "2018"
+
+[dependencies]
+actix = "0.7.4"
+tokio = "0.1.11"
