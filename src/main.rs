@@ -48,6 +48,13 @@ impl Actor for Game {
     }
 }
 
+// To use actor with supervisor actor has to implement `Supervised` trait
+impl actix::Supervised for Game {
+    fn restarting(&mut self, _ctx: &mut Context<Self>) {
+        println!("restarting actor!");
+    }
+}
+
 /// Define handler for `Messages` enum
 impl Handler<Requests> for Game {
     type Result = Responses;
@@ -77,7 +84,9 @@ impl Handler<Requests> for Game {
 
 fn main() {
     let sys = System::new("test");
-    let addr = Game { counter: 0 }.start();
+
+    let addr = actix::Supervisor::start(|_| Game { counter: 0 });
+    //let addr =  Game { counter: 0 }.start();
 
     println!("--Do send--");
     addr.do_send(Requests::Ping);
@@ -86,28 +95,29 @@ fn main() {
     // // Send Ping message.
     // // send() message returns Future object, that resolves to message result
     println!("--Send with futures--");
+    let die_future = addr.send(Requests::Die);
     let ping_future = addr.send(Requests::Ping);
     let pong_future = addr.send(Requests::Pong);
 
-    // Stop
-    let die_future = addr.send(Requests::Die);
-
-    // Spawn ping_future onto event loop
+    // Spawn die_future onto event loop
     Arbiter::spawn(
-        ping_future
+        die_future
             .map(|res| match res {
                 Responses::GotPing => println!("1: Ping received"),
                 Responses::GotPong => println!("1: Pong received"),
-                Responses::GotDie => println!("1: Die received"),
+                Responses::GotDie => {
+                    System::current().stop();
+                    println!("1: Die received")
+                }
             })
             .map_err(|e| {
                 println!("Actor is probably died: {}", e);
             }),
     );
 
-    // Spawn pong_future onto event loop
+    // Spawn ping_future onto event loop
     Arbiter::spawn(
-        pong_future
+        ping_future
             .map(|res| match res {
                 Responses::GotPing => println!("2: Ping received"),
                 Responses::GotPong => println!("2: Pong received"),
@@ -118,16 +128,13 @@ fn main() {
             }),
     );
 
-    //Spawn die_future onto event loop
+    // Spawn pong_future onto event loop
     Arbiter::spawn(
-        die_future
+        pong_future
             .map(|res| match res {
                 Responses::GotPing => println!("3: Ping received"),
                 Responses::GotPong => println!("3: Pong received"),
-                Responses::GotDie => {
-                    System::current().stop();
-                    println!("3: Die received")
-                }
+                Responses::GotDie => println!("3: Die received"),
             })
             .map_err(|e| {
                 println!("Actor is probably died: {}", e);
