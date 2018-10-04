@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Mario Cao"]
 edition = "2018"
 
+[[bin]]
+name = "registry"
+path = "src/registry.rs"
+
 [dependencies]
 actix = "0.7"
 futures = "0.1"
