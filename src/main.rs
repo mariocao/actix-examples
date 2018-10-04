@@ -5,11 +5,13 @@ use futures::Future;
 enum Requests {
     Ping,
     Pong,
+    Die,
 }
 
 enum Responses {
     GotPing,
     GotPong,
+    GotDie,
 }
 
 impl<A, M> MessageResponse<A, M> for Responses
@@ -29,10 +31,12 @@ impl Message for Requests {
 }
 
 // Define actor
-struct MyActor;
+struct Game {
+    counter: usize,
+}
 
 // Provide Actor implementation for our actor
-impl Actor for MyActor {
+impl Actor for Game {
     type Context = Context<Self>;
 
     fn started(&mut self, _ctx: &mut Context<Self>) {
@@ -45,27 +49,48 @@ impl Actor for MyActor {
 }
 
 /// Define handler for `Messages` enum
-impl Handler<Requests> for MyActor {
+impl Handler<Requests> for Game {
     type Result = Responses;
 
     fn handle(&mut self, msg: Requests, _ctx: &mut Context<Self>) -> Self::Result {
+        self.counter += 1;
         match msg {
-            Requests::Ping => Responses::GotPing,
-            Requests::Pong => Responses::GotPong,
+            Requests::Ping => {
+                println!("Ping received. Counter: {:?}", self.counter);
+
+                Responses::GotPing
+            }
+            Requests::Pong => {
+                println!("Pong received. Counter: {:?}", self.counter);
+
+                Responses::GotPong
+            }
+            Requests::Die => {
+                println!("Die received. Counter: {:?}", self.counter);
+                _ctx.stop();
+
+                Responses::GotDie
+            }
         }
     }
 }
 
 fn main() {
     let sys = System::new("test");
+    let addr = Game { counter: 0 }.start();
 
-    // Start MyActor in current thread
-    let addr = MyActor.start();
+    println!("--Do send--");
+    addr.do_send(Requests::Ping);
+    addr.do_send(Requests::Pong);
 
-    // Send Ping message.
-    // send() message returns Future object, that resolves to message result
+    // // Send Ping message.
+    // // send() message returns Future object, that resolves to message result
+    println!("--Send with futures--");
     let ping_future = addr.send(Requests::Ping);
     let pong_future = addr.send(Requests::Pong);
+
+    // Stop
+    let die_future = addr.send(Requests::Die);
 
     // Spawn ping_future onto event loop
     Arbiter::spawn(
@@ -73,6 +98,7 @@ fn main() {
             .map(|res| match res {
                 Responses::GotPing => println!("1: Ping received"),
                 Responses::GotPong => println!("1: Pong received"),
+                Responses::GotDie => println!("1: Die received"),
             })
             .map_err(|e| {
                 println!("Actor is probably died: {}", e);
@@ -85,6 +111,23 @@ fn main() {
             .map(|res| match res {
                 Responses::GotPing => println!("2: Ping received"),
                 Responses::GotPong => println!("2: Pong received"),
+                Responses::GotDie => println!("2: Die received"),
+            })
+            .map_err(|e| {
+                println!("Actor is probably died: {}", e);
+            }),
+    );
+
+    //Spawn die_future onto event loop
+    Arbiter::spawn(
+        die_future
+            .map(|res| match res {
+                Responses::GotPing => println!("3: Ping received"),
+                Responses::GotPong => println!("3: Pong received"),
+                Responses::GotDie => {
+                    System::current().stop();
+                    println!("3: Die received")
+                }
             })
             .map_err(|e| {
                 println!("Actor is probably died: {}", e);
@@ -92,5 +135,4 @@ fn main() {
     );
 
     sys.run();
-
 }
