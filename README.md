@@ -1,7 +1,3 @@
-# Actix example
+# Actix examples
 
-Some example to better understand how Actix works. :)
-
-```bash
-cargo run
-```
+This repo contains a few examples for the library Actix in order to better understand it.
